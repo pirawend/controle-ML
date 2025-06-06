@@ -253,7 +253,6 @@ const IntegratedStockDashboard: React.FC = () => {
   if (showAuthScreen && !isAuthenticated) {
     let currentRedirectUriDisplay = "ERRO_AO_GERAR_URI";
     try {
-        // Attempt to generate a display URI even if mlAPI is not fully set or is null
         const tempApiForUri = mlAPI || new MercadoLivreAPI(clientId || "TEMP_ID_FOR_URI", () => {});
         currentRedirectUriDisplay = tempApiForUri.getRedirectUri();
     } catch(e) { 
@@ -261,6 +260,15 @@ const IntegratedStockDashboard: React.FC = () => {
         currentRedirectUriDisplay = "ERRO_VERIFIQUE_CONSOLE_PARA_URI_CORRETA";
     }
     
+    let displayUriToShow = currentRedirectUriDisplay;
+    const isErrorOrPlaceholderUri = displayUriToShow.includes("COPIE_A_URL") || displayUriToShow.includes("ERRO");
+    if (!isErrorOrPlaceholderUri && !displayUriToShow.startsWith('http://localhost') && displayUriToShow.startsWith('http:')) {
+      displayUriToShow = 'https:' + displayUriToShow.substring(5);
+    }
+    
+    const isLocalHttp = displayUriToShow.startsWith('http://localhost');
+    const currentPort = window.location.port || (window.location.protocol === 'http:' ? '80' : '443');
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex flex-col items-center justify-center p-4 text-white font-sans">
         <Notification notification={notification} onClose={handleCloseNotification} />
@@ -315,11 +323,30 @@ const IntegratedStockDashboard: React.FC = () => {
               <li>Copie o "APP ID" (este é o seu Client ID) e cole acima.</li>
               <li>Na secção "Detalhes da Aplicação", em "URI de Redirect", adicione <strong className="text-yellow-300">exatamente</strong>:
                 <code className="block bg-slate-900/80 text-slate-200 p-2 rounded text-xs mt-1 break-all select-all">
-                  {currentRedirectUriDisplay.includes("COPIE_A_URL") || currentRedirectUriDisplay.includes("ERRO") ? "ERRO: Verifique a consola para a URI correta ou insira manualmente a URL HTTPS da sua aplicação aqui." : currentRedirectUriDisplay}
+                  {isErrorOrPlaceholderUri ? "ERRO: Verifique a consola para a URI correta ou insira manualmente a URL HTTPS da sua aplicação aqui." : displayUriToShow}
                 </code>
-                 { (currentRedirectUriDisplay.includes("COPIE_A_URL") || currentRedirectUriDisplay.includes("ERRO")) && 
+                 {isErrorOrPlaceholderUri && 
                     <p className="text-red-400 mt-1">Atenção: A URI acima não pôde ser determinada automaticamente. Por favor, copie a URL HTTPS correta da barra de endereço do seu navegador quando esta aplicação estiver a correr e cole-a no painel do Mercado Livre.</p>
                  }
+                 {isLocalHttp && !isErrorOrPlaceholderUri && (
+                    <div className="mt-2 p-2.5 bg-amber-900/50 border border-amber-700 rounded-md">
+                        <p className="text-amber-200 font-semibold">Importante sobre HTTPS para Localhost:</p>
+                        <p className="text-amber-300 mt-1">
+                            O Mercado Livre <strong className="text-amber-100">pode exigir</strong> que a URI de Redirecionamento seja HTTPS, mesmo para <code className="text-xs bg-slate-700 p-0.5 rounded">localhost</code>.
+                            Se a URI <code className="text-xs bg-slate-700 p-0.5 rounded">{displayUriToShow}</code> não for aceite:
+                        </p>
+                        <ol className="list-decimal list-inside text-amber-300 mt-1.5 pl-2 space-y-0.5">
+                            <li>
+                                Certifique-se de que está a aceder a esta aplicação no seu navegador através de uma URL HTTPS. Exemplos:
+                                <ul className="list-disc list-inside pl-3 text-amber-400 text-[0.9em]">
+                                    <li><code className="text-xs bg-slate-700 p-0.5 rounded">https://localhost:{currentPort}/</code> (se tiver SSL configurado localmente).</li>
+                                    <li>Usando um túnel HTTPS (ex: ngrok) e acedendo pela URL <code className="text-xs bg-slate-700 p-0.5 rounded">https://SUA_URL.ngrok.io</code>.</li>
+                                </ul>
+                            </li>
+                            <li>A URI de Redirecionamento mostrada acima será então automaticamente atualizada para HTTPS, e essa será a correta para configurar no Mercado Livre.</li>
+                        </ol>
+                    </div>
+                 )}
               </li>
                <li>O seu <strong className="text-yellow-300">Client Secret</strong> deve estar configurado apenas no seu servidor backend (não nesta aplicação frontend).</li>
             </ol>

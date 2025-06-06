@@ -50,13 +50,10 @@ export class MercadoLivreAPI {
     console.log("[API getRedirectUri] Raw - window.location.origin:", currentOrigin);
     console.log("[API getRedirectUri] Raw - window.location.pathname:", currentPathname);
     
-    // Prioriza scf.usercontent.goog: a aplicação é servida na raiz desta origem.
-    // Ignora currentPathname para evitar problemas com caminhos residuais de redirecionamentos incorretos anteriores.
     if (currentOrigin && typeof currentOrigin === 'string' && currentOrigin.includes('scf.usercontent.goog')) {
         console.log("[API getRedirectUri] Detectado scf.usercontent.goog origin. Usando origin + '/' como URI base.");
         generatedUri = currentOrigin + '/'; 
     }
-    // Tenta ancestorOrigins se a detecção direta de scf.usercontent.goog falhar ou não for o caso
     else if (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0) {
         console.log("[API getRedirectUri] Tentando ancestorOrigins.");
         let scfOriginFromAncestor = null;
@@ -70,45 +67,33 @@ export class MercadoLivreAPI {
             console.log("[API getRedirectUri] Encontrado scfOrigin em ancestorOrigins. Usando ancestor origin + '/' como URI base:", scfOriginFromAncestor);
             generatedUri = scfOriginFromAncestor + '/';
         } else {
-            // Se 'scf.usercontent.goog' não for encontrado nos ancestors, usa o fallback.
             console.warn("[API getRedirectUri] 'scf.usercontent.goog' não encontrado em ancestorOrigins. Usando fallback com origin e pathname atuais.");
             generatedUri = this.buildFallbackUri(currentOrigin, currentPathname);
         }
     }
-    // Fallback final se nenhuma das estratégias acima se aplicar (ex: localhost)
     else {
         console.warn("[API getRedirectUri] Nenhuma estratégia primária (origem direta ou ancestor) funcionou. Usando fallback com origin e pathname atuais.");
         generatedUri = this.buildFallbackUri(currentOrigin, currentPathname);
     }
 
-    // Garante HTTPS (a menos que seja explicitamente http://localhost)
     if (generatedUri.startsWith('http://localhost')) {
-        // Mantém http para localhost, pois o ML pode permitir URIs de redirecionamento http para localhost
+        // Mantém http para localhost
     } else if (generatedUri.startsWith('http:')) {
         generatedUri = 'https:' + generatedUri.substring(5);
     }
 
-    // Normaliza a URI (ex: remove barras duplas, garante barra final para raiz)
     if (generatedUri && !generatedUri.includes("COPIE_A_URL")) {
         try {
             const urlObj = new URL(generatedUri);
-            // Normaliza o pathname (ex: //foo// para /foo/)
             urlObj.pathname = urlObj.pathname.replace(/\/\/+/g, '/');
             generatedUri = urlObj.toString();
             
-            // Garante uma barra final se o pathname for apenas '/' (raiz),
-            // já que urlObj.toString() pode produzir "https://dominio.com" de "https://dominio.com/"
-            // se o caminho era apenas "/". Queremos "https://dominio.com/".
-            // (Nota: new URL("https://dominio.com").toString() já retorna "https://dominio.com/",
-            //  então esta verificação é uma segurança adicional.)
             if (urlObj.pathname === '/' && !generatedUri.endsWith('/')) {
                 generatedUri += '/';
             }
         } catch (e) {
-            // Captura erros se generatedUri era um placeholder e não uma URL válida
             console.warn("[API getRedirectUri] Não foi possível normalizar URI com construtor URL (provavelmente um placeholder):", generatedUri, e);
-            // Limpeza básica para placeholders:
-            generatedUri = generatedUri.replace(/([^:]\/)\/+/g, "$1"); // Ex: http://foo//bar -> http://foo/bar
+            generatedUri = generatedUri.replace(/([^:]\/)\/+/g, "$1"); 
         }
     }
     
@@ -133,15 +118,16 @@ export class MercadoLivreAPI {
     const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     console.log("[API Authenticate] A tentar redirecionar para URL de autenticação:", authUrl);
     this.setNotification('A redirecionar para o Mercado Livre para autorização...', NotificationType.INFO);
+    
+    // Alteração: Redirecionar a janela atual em vez de abrir um pop-up
     try {
-      const authWindow = window.open(authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
-      if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
-        console.warn("[API Authenticate] Abertura da janela de autenticação pode ter sido bloqueada pelo navegador.");
-        this.setNotification("A janela de autenticação pode ter sido bloqueada. Verifique as permissões de pop-up do seu navegador.", NotificationType.ERROR);
-      }
+      window.location.href = authUrl;
     } catch (error: any) {
-        console.error("[API Authenticate] Erro ao tentar abrir a janela de autenticação:", error);
-        this.setNotification(`Erro ao abrir janela de autenticação: ${error.message}`, NotificationType.ERROR);
+        // Este catch é mais por precaução, window.location.href raramente lança exceções diretas
+        // que podem ser capturadas desta forma, a menos que seja um erro de sintaxe muito específico
+        // ou uma política de segurança extremamente restritiva (improvável para redirecionamentos simples).
+        console.error("[API Authenticate] Erro ao tentar redirecionar a página:", error);
+        this.setNotification(`Erro ao tentar iniciar autenticação: ${error.message || 'Erro desconhecido'}. Tente novamente.`, NotificationType.ERROR);
     }
   }
 
@@ -209,8 +195,8 @@ export class MercadoLivreAPI {
         body: JSON.stringify({
           grant_type: 'refresh_token',
           refresh_token: this.refreshToken,
-          client_id: this.clientId, // Client ID é necessário pelo ML para o fluxo de refresh token
-          redirect_uri: redirectUri // redirect_uri também pode ser necessário por algumas configurações
+          client_id: this.clientId, 
+          redirect_uri: redirectUri 
         }),
       });
       const data: MercadoLivreTokenResponse = await response.json();
@@ -218,7 +204,7 @@ export class MercadoLivreAPI {
 
       if (response.ok && data.access_token) {
         this.accessToken = data.access_token;
-        if (data.refresh_token) this.refreshToken = data.refresh_token; // ML pode ou não retornar um novo refresh token
+        if (data.refresh_token) this.refreshToken = data.refresh_token; 
         this.userId = String(data.user_id);
 
         localStorage.setItem('ml_access_token', this.accessToken);
@@ -250,11 +236,11 @@ export class MercadoLivreAPI {
         headers: { ...options.headers, 'Authorization': `Bearer ${this.accessToken}`, 'Accept': 'application/json' },
       });
 
-      if (response.status === 401) { // Não autorizado ou token expirado
+      if (response.status === 401) { 
         this.setNotification('Sessão expirada. Tentando renovar...', NotificationType.INFO);
         const refreshed = await this.refreshTokenFlow();
         if (refreshed) {
-          response = await fetch(url, { // Tenta novamente a requisição com o novo token
+          response = await fetch(url, { 
             ...options,
             headers: { ...options.headers, 'Authorization': `Bearer ${this.accessToken}`, 'Accept': 'application/json' },
           });
@@ -271,9 +257,6 @@ export class MercadoLivreAPI {
       return await response.json() as T;
     } catch (error: any) {
       console.error(`Erro em makeRequest para ${url}:`, error);
-      if (!error.message.includes('Falha ao atualizar token') && !error.message.includes('Sessão expirada')) {
-        // A notificação de erro mais específica será feita pelo chamador ou refreshTokenFlow
-      }
       throw error;
     }
   }
